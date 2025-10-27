@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speakers & Listeners Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .toolbar {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .search-container {
+            flex: 1;
+            min-width: 250px;
+            position: relative;
+        }
+
+        .search-container input {
+            width: 100%;
+            padding: 12px 40px 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .search-container input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #a0aec0;
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .search-results.show {
+            display: block;
+        }
+
+        .search-result-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .search-result-item:hover {
+            background: #f7fafc;
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-username {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .search-result-meta {
+            font-size: 12px;
+            color: #718096;
+            margin-top: 3px;
+        }
+
+        .toolbar-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .input-section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        }
+
+        .input-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+        }
+
+        .btn-clear {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-clear:hover:not(:disabled) {
+            background: #e53e3e;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 101, 101, 0.4);
+        }
+
+        .btn-info {
+            background: #4299e1;
+            color: white;
+        }
+
+        .btn-info:hover:not(:disabled) {
+            background: #3182ce;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(66, 153, 225, 0.4);
+        }
+
+        .btn-warning {
+            background: #ed8936;
+            color: white;
+        }
+
+        .btn-warning:hover:not(:disabled) {
+            background: #dd6b20;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(237, 137, 54, 0.4);
+        }
+
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.2rem;
+            padding: 20px;
+        }
+
+        .groups-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .group {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .group.highlight {
+            animation: highlight 1s ease-out;
+        }
+
+        @keyframes highlight {
+            0%, 100% { box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+            50% { box-shadow: 0 0 20px 5px rgba(102, 126, 234, 0.6); }
+        }
+
+        .group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .group-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #333;
+            padding: 8px 12px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            max-width: 70%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .group-title:hover {
+            background: #f7fafc;
+            border-color: #e0e0e0;
+        }
+
+        .group-title.editing {
+            border-color: #667eea;
+            background: #f7fafc;
+            outline: none;
+        }
+
+        .delete-group-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            background: #fc8181;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .delete-group-btn:hover {
+            background: #f56565;
+        }
+
+        .category {
+            margin-bottom: 20px;
+        }
+
+        .category-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .usernames-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-height: 30px;
+        }
+
+        .username-tag {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .username-tag.listener {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        }
+
+        .remove-username {
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .remove-username:hover {
+            opacity: 1;
+        }
+
+        .empty-state {
+            color: #a0aec0;
+            font-style: italic;
+            font-size: 13px;
+        }
+
+        .stats {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .hint {
+            background: #edf2f7;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .hint strong {
+            color: #2d3748;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #48bb78;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            background: white;
+            padding: 16px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 300px;
+            max-width: 400px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .toast.success {
+            border-left: 4px solid #48bb78;
+        }
+
+        .toast.error {
+            border-left: 4px solid #f56565;
+        }
+
+        .toast.info {
+            border-left: 4px solid #4299e1;
+        }
+
+        .toast.warning {
+            border-left: 4px solid #ed8936;
+        }
+
+        .toast-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .toast-content {
+            flex: 1;
+        }
+
+        .toast-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 4px;
+        }
+
+        .toast-message {
+            font-size: 14px;
+            color: #4a5568;
+        }
+
+        .toast-close {
+            cursor: pointer;
+            color: #a0aec0;
+            font-size: 20px;
+            flex-shrink: 0;
+            transition: color 0.2s;
+        }
+
+        .toast-close:hover {
+            color: #718096;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .file-input-wrapper {
+            margin: 15px 0;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .checkbox-wrapper input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👥 Speakers & Listeners Manager</h1>
+
+        <!-- Toolbar with Search and Export/Import -->
+        <div class="toolbar">
+            <div class="search-container">
+                <input type="text" id="searchInput" placeholder="Search usernames..." />
+                <span class="search-icon">🔍</span>
+                <div class="search-results" id="searchResults"></div>
+            </div>
+            <div class="toolbar-buttons">
+                <button class="btn-info" onclick="exportJSON()">📥 Export JSON</button>
+                <button class="btn-info" onclick="exportCSV()">📥 Export CSV</button>
+                <button class="btn-warning" onclick="showImportModal()">📤 Import</button>
+            </div>
+        </div>
+
+        <div class="input-section">
+            <h2>Add Usernames <span class="status-indicator" title="Connected to server"></span></h2>
+            <textarea id="usernameInput" placeholder="Paste your text here. The app will automatically detect:&#10;&#10;Speakers:&#10;@username1&#10;@username2&#10;&#10;Listeners:&#10;@username3&#10;@username4&#10;&#10;Or just paste a list of usernames to add them all as speakers."></textarea>
+            <div class="controls">
+                <button class="btn-primary" id="addBtn" onclick="addUsernames()">Add to Current Group</button>
+                <button class="btn-secondary" onclick="addNewGroup()">Create New Group</button>
+                <button class="btn-clear" onclick="clearInput()">Clear Input</button>
+            </div>
+            <div class="hint">
+                <strong>💡 Tip:</strong> Paste text with "Speakers:" and "Listeners:" headers for automatic categorization. Click group names to rename. Use the search bar to find users. Export your data or import from backups.
+            </div>
+        </div>
+
+        <div id="groupsContainer" class="groups-container">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div class="modal" id="importModal">
+        <div class="modal-content">
+            <div class="modal-header">Import Data</div>
+            <div class="modal-body">
+                <p>Select a JSON file to import:</p>
+                <div class="file-input-wrapper">
+                    <input type="file" id="importFile" accept=".json" />
+                </div>
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="replaceExisting" />
+                    <label for="replaceExisting">Replace all existing data (⚠️ This will delete current data)</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-clear" onclick="closeImportModal()">Cancel</button>
+                <button class="btn-primary" onclick="importJSON()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        const API_BASE = '';
+        let groups = [];
+        let searchTimeout = null;
+
+        // Toast notification system
+        function showToast(type, title, message, duration = 4000) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+
+            const icons = {
+                success: '✓',
+                error: '✕',
+                info: 'ℹ',
+                warning: '⚠'
+            };
+
+            toast.innerHTML = `
+                <div class="toast-icon">${icons[type]}</div>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+                <div class="toast-close" onclick="this.parentElement.remove()">×</div>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, duration);
+        }
+
+        // Fetch all groups from server
+        async function fetchGroups() {
+            try {
+                const response = await fetch(`${API_BASE}/api/groups`);
+                if (!response.ok) throw new Error('Failed to fetch groups');
+
+                groups = await response.json();
+                renderGroups();
+            } catch (error) {
+                console.error('Error fetching groups:', error);
+                showToast('error', 'Error', 'Failed to load groups. Please refresh the page.');
+            }
+        }
+
+        // Add new group
+        async function addNewGroup() {
+            try {
+                const groupCount = groups.length;
+                const response = await fetch(`${API_BASE}/api/groups`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: `Group ${groupCount + 1}` })
+                });
+
+                if (!response.ok) throw new Error('Failed to create group');
+
+                await fetchGroups();
+                showToast('success', 'Success', 'New group created!');
+            } catch (error) {
+                console.error('Error creating group:', error);
+                showToast('error', 'Error', 'Failed to create group. Please try again.');
+            }
+        }
+
+        // Delete group
+        async function deleteGroup(groupId) {
+            if (groups.length === 1) {
+                showToast('warning', 'Warning', 'You must have at least one group!');
+                return;
+            }
+
+            if (!confirm('Are you sure you want to delete this group?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('Failed to delete group');
+
+                await fetchGroups();
+                showToast('success', 'Deleted', 'Group deleted successfully.');
+            } catch (error) {
+                console.error('Error deleting group:', error);
+                showToast('error', 'Error', 'Failed to delete group. Please try again.');
+            }
+        }
+
+        // Rename group
+        async function renameGroup(groupId, newName) {
+            const trimmedName = newName.trim();
+            if (!trimmedName) {
+                await fetchGroups();
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: trimmedName })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to rename group');
+                }
+
+                await fetchGroups();
+                showToast('success', 'Updated', 'Group renamed successfully.');
+            } catch (error) {
+                console.error('Error renaming group:', error);
+                showToast('error', 'Error', error.message);
+                await fetchGroups();
+            }
+        }
+
+        // Parse input text
+        function parseInput(text) {
+            const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+
+            let currentCategory = 'speakers';
+            const speakers = [];
+            const listeners = [];
+
+            for (const line of lines) {
+                const lowerLine = line.toLowerCase();
+
+                if (lowerLine === 'speakers:' || lowerLine === 'speaker:') {
+                    currentCategory = 'speakers';
+                    continue;
+                } else if (lowerLine === 'listeners:' || lowerLine === 'listener:') {
+                    currentCategory = 'listeners';
+                    continue;
+                }
+
+                let username = line.replace(/^@/, '').trim();
+
+                if (username) {
+                    if (currentCategory === 'speakers') {
+                        speakers.push(username);
+                    } else {
+                        listeners.push(username);
+                    }
+                }
+            }
+
+            return { speakers, listeners };
+        }
+
+        // Check if username already exists
+        function usernameExists(username) {
+            const lowerUsername = username.toLowerCase();
+            return groups.some(group =>
+                group.speakers.some(s => s.toLowerCase() === lowerUsername) ||
+                group.listeners.some(l => l.toLowerCase() === lowerUsername)
+            );
+        }
+
+        // Add usernames to current group
+        async function addUsernames() {
+            const input = document.getElementById('usernameInput').value.trim();
+            if (!input) {
+                showToast('warning', 'Warning', 'Please enter some usernames!');
+                return;
+            }
+
+            const { speakers, listeners } = parseInput(input);
+
+            if (speakers.length === 0 && listeners.length === 0) {
+                showToast('warning', 'Warning', 'No valid usernames found!');
+                return;
+            }
+
+            const newSpeakers = speakers.filter(s => !usernameExists(s));
+            const newListeners = listeners.filter(l => !usernameExists(l));
+
+            if (newSpeakers.length === 0 && newListeners.length === 0) {
+                showToast('info', 'Info', 'All usernames already exist!');
+                return;
+            }
+
+            try {
+                const addBtn = document.getElementById('addBtn');
+                addBtn.disabled = true;
+                addBtn.textContent = 'Adding...';
+
+                const currentGroup = groups[groups.length - 1];
+
+                const response = await fetch(`${API_BASE}/api/groups/${currentGroup.id}/usernames`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        speakers: newSpeakers,
+                        listeners: newListeners
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to add usernames');
+                }
+
+                await fetchGroups();
+                clearInput();
+
+                const duplicateCount = (speakers.length + listeners.length) - (newSpeakers.length + newListeners.length);
+                if (duplicateCount > 0) {
+                    showToast('success', 'Added!', `Added successfully! ${duplicateCount} duplicate(s) filtered out.`);
+                } else {
+                    showToast('success', 'Success', `Added ${newSpeakers.length + newListeners.length} username(s)!`);
+                }
+            } catch (error) {
+                console.error('Error adding usernames:', error);
+                showToast('error', 'Error', error.message);
+            } finally {
+                const addBtn = document.getElementById('addBtn');
+                addBtn.disabled = false;
+                addBtn.textContent = 'Add to Current Group';
+            }
+        }
+
+        // Remove username
+        async function removeUsername(username, category) {
+            try {
+                const response = await fetch(`${API_BASE}/api/usernames/${encodeURIComponent(username)}/${category}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('Failed to remove username');
+
+                await fetchGroups();
+                showToast('success', 'Removed', `${username} removed successfully.`);
+            } catch (error) {
+                console.error('Error removing username:', error);
+                showToast('error', 'Error', 'Failed to remove username. Please try again.');
+            }
+        }
+
+        // Clear input
+        function clearInput() {
+            document.getElementById('usernameInput').value = '';
+        }
+
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+
+            if (query.length === 0) {
+                document.getElementById('searchResults').classList.remove('show');
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/search?query=${encodeURIComponent(query)}`);
+                    if (!response.ok) throw new Error('Search failed');
+
+                    const data = await response.json();
+                    displaySearchResults(data.results);
+                } catch (error) {
+                    console.error('Search error:', error);
+                }
+            }, 300);
+        });
+
+        function displaySearchResults(results) {
+            const container = document.getElementById('searchResults');
+
+            if (results.length === 0) {
+                container.innerHTML = '<div class="search-result-item">No results found</div>';
+                container.classList.add('show');
+                return;
+            }
+
+            container.innerHTML = results.map(result => `
+                <div class="search-result-item" onclick="highlightGroup(${result.group_id})">
+                    <div class="search-result-username">@${escapeHtml(result.username)}</div>
+                    <div class="search-result-meta">${result.category} • ${escapeHtml(result.group_name)}</div>
+                </div>
+            `).join('');
+
+            container.classList.add('show');
+        }
+
+        function highlightGroup(groupId) {
+            document.getElementById('searchResults').classList.remove('show');
+            document.getElementById('searchInput').value = '';
+
+            const groupElement = document.querySelector(`[data-group-id="${groupId}"]`);
+            if (groupElement) {
+                groupElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                groupElement.classList.add('highlight');
+                setTimeout(() => groupElement.classList.remove('highlight'), 1000);
+            }
+        }
+
+        // Click outside to close search results
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) {
+                document.getElementById('searchResults').classList.remove('show');
+            }
+        });
+
+        // Export JSON
+        function exportJSON() {
+            window.location.href = `${API_BASE}/api/export/json`;
+            showToast('success', 'Export Started', 'Your JSON file is being downloaded.');
+        }
+
+        // Export CSV
+        function exportCSV() {
+            window.location.href = `${API_BASE}/api/export/csv`;
+            showToast('success', 'Export Started', 'Your CSV file is being downloaded.');
+        }
+
+        // Show import modal
+        function showImportModal() {
+            document.getElementById('importModal').classList.add('show');
+        }
+
+        // Close import modal
+        function closeImportModal() {
+            document.getElementById('importModal').classList.remove('show');
+            document.getElementById('importFile').value = '';
+            document.getElementById('replaceExisting').checked = false;
+        }
+
+        // Import JSON
+        async function importJSON() {
+            const fileInput = document.getElementById('importFile');
+            const replaceExisting = document.getElementById('replaceExisting').checked;
+
+            if (!fileInput.files.length) {
+                showToast('warning', 'Warning', 'Please select a file to import.');
+                return;
+            }
+
+            try {
+                const file = fileInput.files[0];
+                const text = await file.text();
+                const data = JSON.parse(text);
+
+                if (!data.groups || !Array.isArray(data.groups)) {
+                    throw new Error('Invalid file format');
+                }
+
+                const response = await fetch(`${API_BASE}/api/import/json`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        groups: data.groups,
+                        replaceExisting
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Import failed');
+                }
+
+                const result = await response.json();
+                await fetchGroups();
+                closeImportModal();
+
+                showToast('success', 'Import Successful',
+                    `Imported ${result.imported.importedGroups} groups and ${result.imported.importedUsernames} usernames.`);
+            } catch (error) {
+                console.error('Import error:', error);
+                showToast('error', 'Import Failed', error.message);
+            }
+        }
+
+        // Render groups
+        function renderGroups() {
+            const container = document.getElementById('groupsContainer');
+
+            if (groups.length === 0) {
+                container.innerHTML = '<p class="empty-state" style="color: white; text-align: center;">No groups yet. Click "Create New Group" to start!</p>';
+                return;
+            }
+
+            container.innerHTML = groups.map(group => {
+                const totalUsers = group.speakers.length + group.listeners.length;
+
+                return `
+                    <div class="group" data-group-id="${group.id}">
+                        <div class="group-header">
+                            <div class="group-title"
+                                 contenteditable="true"
+                                 onblur="renameGroup(${group.id}, this.textContent)"
+                                 onfocus="this.classList.add('editing')"
+                                 onblur="this.classList.remove('editing')"
+                                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+                            >${escapeHtml(group.name)}</div>
+                            ${groups.length > 1 ? `<button class="delete-group-btn" onclick="deleteGroup(${group.id})">Delete</button>` : ''}
+                        </div>
+
+                        <div class="category">
+                            <div class="category-title">🎤 Speakers (${group.speakers.length})</div>
+                            <div class="usernames-list">
+                                ${group.speakers.length > 0
+                                    ? group.speakers.map(speaker => `
+                                        <span class="username-tag">
+                                            @${escapeHtml(speaker)}
+                                            <span class="remove-username" onclick="removeUsername('${escapeHtml(speaker)}', 'speaker')">×</span>
+                                        </span>
+                                    `).join('')
+                                    : '<span class="empty-state">No speakers yet</span>'
+                                }
+                            </div>
+                        </div>
+
+                        <div class="category">
+                            <div class="category-title">👂 Listeners (${group.listeners.length})</div>
+                            <div class="usernames-list">
+                                ${group.listeners.length > 0
+                                    ? group.listeners.map(listener => `
+                                        <span class="username-tag listener">
+                                            @${escapeHtml(listener)}
+                                            <span class="remove-username" onclick="removeUsername('${escapeHtml(listener)}', 'listener')">×</span>
+                                        </span>
+                                    `).join('')
+                                    : '<span class="empty-state">No listeners yet</span>'
+                                }
+                            </div>
+                        </div>
+
+                        <div class="stats">
+                            📊 Total: ${totalUsers} user${totalUsers !== 1 ? 's' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // Initialize
+        fetchGroups();
+
+        // Refresh data every 30 seconds
+        setInterval(fetchGroups, 30000);
+    </script>
+</body>
+</html>

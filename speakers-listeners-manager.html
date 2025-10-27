@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speakers & Listeners Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .input-section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        }
+
+        .input-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+        }
+
+        .btn-clear {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-clear:hover {
+            background: #e53e3e;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 101, 101, 0.4);
+        }
+
+        .groups-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .group {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .group-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #333;
+            padding: 8px 12px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .group-title:hover {
+            background: #f7fafc;
+            border-color: #e0e0e0;
+        }
+
+        .group-title.editing {
+            border-color: #667eea;
+            background: #f7fafc;
+            outline: none;
+        }
+
+        .delete-group-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            background: #fc8181;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .delete-group-btn:hover {
+            background: #f56565;
+        }
+
+        .category {
+            margin-bottom: 20px;
+        }
+
+        .category-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .usernames-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-height: 30px;
+        }
+
+        .username-tag {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .username-tag.listener {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        }
+
+        .remove-username {
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .remove-username:hover {
+            opacity: 1;
+        }
+
+        .empty-state {
+            color: #a0aec0;
+            font-style: italic;
+            font-size: 13px;
+        }
+
+        .stats {
+            background: rgba(102, 126, 234, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .hint {
+            background: #edf2f7;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .hint strong {
+            color: #2d3748;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👥 Speakers & Listeners Manager</h1>
+
+        <div class="input-section">
+            <h2>Add Usernames</h2>
+            <textarea id="usernameInput" placeholder="Paste your text here. The app will automatically detect:&#10;&#10;Speakers:&#10;@username1&#10;@username2&#10;&#10;Listeners:&#10;@username3&#10;@username4&#10;&#10;Or just paste a list of usernames to add them all as speakers."></textarea>
+            <div class="controls">
+                <button class="btn-primary" onclick="addUsernames()">Add to Current Group</button>
+                <button class="btn-secondary" onclick="addNewGroup()">Create New Group</button>
+                <button class="btn-clear" onclick="clearInput()">Clear Input</button>
+            </div>
+            <div class="hint">
+                <strong>💡 Tip:</strong> You can paste text with "Speakers:" and "Listeners:" headers, and usernames will be automatically categorized. Click on any group name to rename it. Duplicates are automatically filtered out.
+            </div>
+        </div>
+
+        <div id="groupsContainer" class="groups-container"></div>
+    </div>
+
+    <script>
+        let groups = [];
+        let currentGroupId = 0;
+
+        // Initialize with one default group
+        function init() {
+            addNewGroup();
+        }
+
+        function addNewGroup() {
+            const groupId = ++currentGroupId;
+            const group = {
+                id: groupId,
+                name: `Group ${groupId}`,
+                speakers: [],
+                listeners: []
+            };
+            groups.push(group);
+            renderGroups();
+            return group;
+        }
+
+        function deleteGroup(groupId) {
+            if (groups.length === 1) {
+                alert('You must have at least one group!');
+                return;
+            }
+            if (confirm('Are you sure you want to delete this group?')) {
+                groups = groups.filter(g => g.id !== groupId);
+                renderGroups();
+            }
+        }
+
+        function renameGroup(groupId, newName) {
+            const group = groups.find(g => g.id === groupId);
+            if (group) {
+                group.name = newName || `Group ${groupId}`;
+                renderGroups();
+            }
+        }
+
+        function parseInput(text) {
+            const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+
+            let currentCategory = 'speakers'; // default
+            const speakers = [];
+            const listeners = [];
+
+            for (const line of lines) {
+                const lowerLine = line.toLowerCase();
+
+                // Check for category headers
+                if (lowerLine === 'speakers:' || lowerLine === 'speaker:') {
+                    currentCategory = 'speakers';
+                    continue;
+                } else if (lowerLine === 'listeners:' || lowerLine === 'listener:') {
+                    currentCategory = 'listeners';
+                    continue;
+                }
+
+                // Extract username (remove @ if present)
+                let username = line.replace(/^@/, '').trim();
+
+                if (username) {
+                    if (currentCategory === 'speakers') {
+                        speakers.push(username);
+                    } else {
+                        listeners.push(username);
+                    }
+                }
+            }
+
+            return { speakers, listeners };
+        }
+
+        function getAllUsernames() {
+            const allSpeakers = new Set();
+            const allListeners = new Set();
+
+            groups.forEach(group => {
+                group.speakers.forEach(s => allSpeakers.add(s.toLowerCase()));
+                group.listeners.forEach(l => allListeners.add(l.toLowerCase()));
+            });
+
+            return { allSpeakers, allListeners };
+        }
+
+        function addUsernames() {
+            const input = document.getElementById('usernameInput').value.trim();
+            if (!input) {
+                alert('Please enter some usernames!');
+                return;
+            }
+
+            const { speakers, listeners } = parseInput(input);
+
+            if (speakers.length === 0 && listeners.length === 0) {
+                alert('No valid usernames found!');
+                return;
+            }
+
+            // Get the last group (current group)
+            let currentGroup = groups[groups.length - 1];
+
+            const { allSpeakers, allListeners } = getAllUsernames();
+
+            // Add speakers (filter duplicates)
+            speakers.forEach(speaker => {
+                const lowerSpeaker = speaker.toLowerCase();
+                if (!allSpeakers.has(lowerSpeaker) && !allListeners.has(lowerSpeaker)) {
+                    currentGroup.speakers.push(speaker);
+                    allSpeakers.add(lowerSpeaker);
+                }
+            });
+
+            // Add listeners (filter duplicates)
+            listeners.forEach(listener => {
+                const lowerListener = listener.toLowerCase();
+                if (!allListeners.has(lowerListener) && !allSpeakers.has(lowerListener)) {
+                    currentGroup.listeners.push(listener);
+                    allListeners.add(lowerListener);
+                }
+            });
+
+            renderGroups();
+            clearInput();
+        }
+
+        function removeUsername(groupId, category, username) {
+            const group = groups.find(g => g.id === groupId);
+            if (group) {
+                if (category === 'speakers') {
+                    group.speakers = group.speakers.filter(s => s !== username);
+                } else {
+                    group.listeners = group.listeners.filter(l => l !== username);
+                }
+                renderGroups();
+            }
+        }
+
+        function clearInput() {
+            document.getElementById('usernameInput').value = '';
+        }
+
+        function renderGroups() {
+            const container = document.getElementById('groupsContainer');
+
+            if (groups.length === 0) {
+                container.innerHTML = '<p class="empty-state">No groups yet. Click "Create New Group" to start!</p>';
+                return;
+            }
+
+            container.innerHTML = groups.map(group => {
+                const totalUsers = group.speakers.length + group.listeners.length;
+
+                return `
+                    <div class="group">
+                        <div class="group-header">
+                            <div class="group-title"
+                                 contenteditable="true"
+                                 onblur="renameGroup(${group.id}, this.textContent)"
+                                 onfocus="this.classList.add('editing')"
+                                 onblur="this.classList.remove('editing')"
+                                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+                            >${group.name}</div>
+                            ${groups.length > 1 ? `<button class="delete-group-btn" onclick="deleteGroup(${group.id})">Delete</button>` : ''}
+                        </div>
+
+                        <div class="category">
+                            <div class="category-title">🎤 Speakers (${group.speakers.length})</div>
+                            <div class="usernames-list">
+                                ${group.speakers.length > 0
+                                    ? group.speakers.map(speaker => `
+                                        <span class="username-tag">
+                                            @${speaker}
+                                            <span class="remove-username" onclick="removeUsername(${group.id}, 'speakers', '${speaker}')">×</span>
+                                        </span>
+                                    `).join('')
+                                    : '<span class="empty-state">No speakers yet</span>'
+                                }
+                            </div>
+                        </div>
+
+                        <div class="category">
+                            <div class="category-title">👂 Listeners (${group.listeners.length})</div>
+                            <div class="usernames-list">
+                                ${group.listeners.length > 0
+                                    ? group.listeners.map(listener => `
+                                        <span class="username-tag listener">
+                                            @${listener}
+                                            <span class="remove-username" onclick="removeUsername(${group.id}, 'listeners', '${listener}')">×</span>
+                                        </span>
+                                    `).join('')
+                                    : '<span class="empty-state">No listeners yet</span>'
+                                }
+                            </div>
+                        </div>
+
+                        <div class="stats">
+                            📊 Total: ${totalUsers} user${totalUsers !== 1 ? 's' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Initialize on page load
+        init();
+    </script>
+</body>
+</html>
