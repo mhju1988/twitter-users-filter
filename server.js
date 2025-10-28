@@ -5,8 +5,16 @@ const cors = require('cors');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 const winston = require('winston');
+const multer = require('multer');
+const fs = require('fs');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
 
 const app = express();
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'your-session-secret-change-in-production';
 const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './speakers_listeners.db';
 
@@ -44,6 +52,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_id INTEGER NOT NULL,
     username TEXT NOT NULL,
+    display_name TEXT,
     category TEXT NOT NULL CHECK(category IN ('speaker', 'listener')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
@@ -55,6 +64,76 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_usernames_username ON usernames(LOWER(username));
   CREATE INDEX IF NOT EXISTS idx_usernames_category ON usernames(category);
 `);
+
+// Create users table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    full_name TEXT,
+    role TEXT NOT NULL CHECK(role IN ('admin', 'editor', 'viewer')) DEFAULT 'viewer',
+    is_active BOOLEAN DEFAULT 1,
+    last_login DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+  CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+  CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+`);
+
+// Create videos table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS videos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    recording_date DATE,
+    file_path TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_size INTEGER,
+    duration INTEGER,
+    mime_type TEXT,
+    metadata TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_videos_recording_date ON videos(recording_date);
+  CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at);
+`);
+
+// Migration: Add display_name column to existing databases
+try {
+  const usernamesTableInfo = db.prepare("PRAGMA table_info(usernames)").all();
+  const hasDisplayName = usernamesTableInfo.some(col => col.name === 'display_name');
+
+  if (!hasDisplayName) {
+    console.log('Migrating database: Adding display_name column...');
+    db.exec('ALTER TABLE usernames ADD COLUMN display_name TEXT');
+    console.log('display_name migration completed!');
+  }
+} catch (error) {
+  console.error('Migration error (display_name):', error);
+}
+
+// Migration: Add created_by column to videos table
+try {
+  const videosTableInfo = db.prepare("PRAGMA table_info(videos)").all();
+  const hasCreatedBy = videosTableInfo.some(col => col.name === 'created_by');
+
+  if (!hasCreatedBy) {
+    console.log('Migrating database: Adding created_by column to videos...');
+    db.exec('ALTER TABLE videos ADD COLUMN created_by INTEGER REFERENCES users(id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_videos_created_by ON videos(created_by)');
+    console.log('created_by migration completed!');
+  }
+} catch (error) {
+  console.error('Migration error (created_by):', error);
+}
 
 // Validation functions
 const validateUsername = (username) => {
@@ -73,26 +152,89 @@ const validateGroupName = (name) => {
   return { valid: true, value: trimmed };
 };
 
-const sanitizeUsername = (username) => {
-  // Handle common patterns like "username —" (em dash), "username -", etc.
-  let sanitized = username
-    .replace(/\s+[—–-]+$/g, '') // Remove space + any type of dash at the end (em dash, en dash, hyphen)
-    .replace(/\s+\.$/g, '') // Remove space + dot at the end
-    .trim()
-    .replace(/[^\w.-]/g, ''); // Remove invalid characters (keeps alphanumeric, _, -, .)
+const parseUsernameAndDisplay = (input) => {
+  // Parse format: "@username — Display Name" or just "@username"
+  // Also handles em dash (—), en dash (–), and regular hyphen (-)
 
-  // Remove trailing hyphens and dots (copy-paste artifacts)
-  sanitized = sanitized.replace(/[-.]+$/, '');
-  // Remove leading hyphens and dots
-  sanitized = sanitized.replace(/^[-.]+/, '');
+  // Remove leading @ if present
+  let cleaned = input.replace(/^@/, '').trim();
 
-  return sanitized;
+  // Check for display name separator (em dash, en dash, or hyphen with spaces)
+  const separatorRegex = /\s+[—–-]\s+/;
+  const parts = cleaned.split(separatorRegex);
+
+  let username = parts[0].trim();
+  let displayName = parts.length > 1 ? parts.slice(1).join(' ').trim() : '';
+
+  // Sanitize username (keep only valid characters)
+  username = username
+    .replace(/[^\w.-]/g, '') // Remove invalid characters (keeps alphanumeric, _, -, .)
+    .replace(/[-.]+$/, '') // Remove trailing hyphens/dots
+    .replace(/^[-.]+/, ''); // Remove leading hyphens/dots
+
+  // Display name can have spaces and more characters, but sanitize HTML special chars
+  if (displayName) {
+    displayName = displayName
+      .replace(/[<>]/g, '') // Remove HTML tags
+      .slice(0, 100); // Max 100 characters for display name
+  }
+
+  return { username, displayName: displayName || null };
 };
 
+// Ensure uploads directory exists
+const UPLOADS_DIR = path.join(__dirname, 'uploads', 'videos');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+// Configure multer for video uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 500 * 1024 * 1024 // 500MB max file size
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept video files only
+    const allowedMimes = ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only video files are allowed.'));
+    }
+  }
+});
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(session({
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 30 * 60 * 1000 // 30 minutes
+  }
+}));
 app.use(express.static('public'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -105,6 +247,178 @@ const limiter = rateLimit({
 
 app.use('/api/', limiter);
 
+// === AUTHENTICATION MIDDLEWARE ===
+
+// Verify JWT token
+const authenticateToken = (req, res, next) => {
+  const token = req.cookies.token || req.headers['authorization']?.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access denied. No token provided.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(403).json({ error: 'Invalid or expired token.' });
+  }
+};
+
+// Check user role
+const authorizeRole = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Access denied. Insufficient permissions.' });
+    }
+
+    next();
+  };
+};
+
+// === AUTHENTICATION API ===
+
+// Register new user (admin only in production, open for first user)
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, password, full_name, role } = req.body;
+
+    // Validation
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Username, email, and password are required' });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    // Check if user already exists
+    const existingUser = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username or email already exists' });
+    }
+
+    // Check if this is the first user (make them admin)
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
+    const isFirstUser = userCount.count === 0;
+    const userRole = isFirstUser ? 'admin' : (role || 'viewer');
+
+    // Hash password
+    const password_hash = await bcrypt.hash(password, 10);
+
+    // Create user
+    const result = db.prepare(`
+      INSERT INTO users (username, email, password_hash, full_name, role)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(username, email, password_hash, full_name || null, userRole);
+
+    logger.info(`User registered: ${username} (${userRole})`);
+
+    res.json({
+      success: true,
+      user: {
+        id: result.lastInsertRowid,
+        username,
+        email,
+        role: userRole
+      }
+    });
+  } catch (error) {
+    logger.error('Registration error:', error);
+    res.status(500).json({ error: 'Failed to register user' });
+  }
+});
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    // Find user
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Check if user is active
+    if (!user.is_active) {
+      return res.status(403).json({ error: 'Account is deactivated' });
+    }
+
+    // Verify password
+    const validPassword = await bcrypt.compare(password, user.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Update last login
+    db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    // Set cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 8 * 60 * 60 * 1000 // 8 hours
+    });
+
+    logger.info(`User logged in: ${username}`);
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role
+      },
+      token
+    });
+  } catch (error) {
+    logger.error('Login error:', error);
+    res.status(500).json({ error: 'Failed to login' });
+  }
+});
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('token');
+  req.session.destroy();
+  res.json({ success: true, message: 'Logged out successfully' });
+});
+
+// Get current user
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+  try {
+    const user = db.prepare('SELECT id, username, email, full_name, role, last_login, created_at FROM users WHERE id = ?').get(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    logger.error('Error fetching user:', error);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
 // API Routes
 
 // Get all groups with their usernames
@@ -114,12 +428,18 @@ app.get('/api/groups', (req, res) => {
 
     const groupsWithUsernames = groups.map(group => {
       const speakers = db.prepare(
-        'SELECT username FROM usernames WHERE group_id = ? AND category = ? ORDER BY username ASC'
-      ).all(group.id, 'speaker').map(row => row.username);
+        'SELECT username, display_name FROM usernames WHERE group_id = ? AND category = ? ORDER BY username ASC'
+      ).all(group.id, 'speaker').map(row => ({
+        username: row.username,
+        displayName: row.display_name
+      }));
 
       const listeners = db.prepare(
-        'SELECT username FROM usernames WHERE group_id = ? AND category = ? ORDER BY username ASC'
-      ).all(group.id, 'listener').map(row => row.username);
+        'SELECT username, display_name FROM usernames WHERE group_id = ? AND category = ? ORDER BY username ASC'
+      ).all(group.id, 'listener').map(row => ({
+        username: row.username,
+        displayName: row.display_name
+      }));
 
       return {
         id: group.id,
@@ -230,28 +550,28 @@ app.post('/api/groups/:id/usernames', (req, res) => {
       return res.status(404).json({ error: 'Group not found' });
     }
 
-    // Sanitize first, then validate usernames
+    // Parse and validate usernames with display names
     const validSpeakers = [];
     const validListeners = [];
     const errors = [];
 
-    speakers.forEach(username => {
-      const sanitized = sanitizeUsername(username);
-      const validation = validateUsername(sanitized);
-      if (validation.valid && sanitized.length > 0) {
-        validSpeakers.push(sanitized);
+    speakers.forEach(input => {
+      const { username, displayName } = parseUsernameAndDisplay(input);
+      const validation = validateUsername(username);
+      if (validation.valid && username.length > 0) {
+        validSpeakers.push({ username, displayName });
       } else {
-        errors.push(`Speaker "${username}": ${validation.error || 'Empty after sanitization'}`);
+        errors.push(`Speaker "${input}": ${validation.error || 'Empty after sanitization'}`);
       }
     });
 
-    listeners.forEach(username => {
-      const sanitized = sanitizeUsername(username);
-      const validation = validateUsername(sanitized);
-      if (validation.valid && sanitized.length > 0) {
-        validListeners.push(sanitized);
+    listeners.forEach(input => {
+      const { username, displayName } = parseUsernameAndDisplay(input);
+      const validation = validateUsername(username);
+      if (validation.valid && username.length > 0) {
+        validListeners.push({ username, displayName });
       } else {
-        errors.push(`Listener "${username}": ${validation.error || 'Empty after sanitization'}`);
+        errors.push(`Listener "${input}": ${validation.error || 'Empty after sanitization'}`);
       }
     });
 
@@ -259,15 +579,15 @@ app.post('/api/groups/:id/usernames', (req, res) => {
       return res.status(400).json({ error: 'No valid usernames provided', details: errors });
     }
 
-    const insertStmt = db.prepare('INSERT OR IGNORE INTO usernames (group_id, username, category) VALUES (?, ?, ?)');
+    const insertStmt = db.prepare('INSERT OR IGNORE INTO usernames (group_id, username, display_name, category) VALUES (?, ?, ?, ?)');
 
     const insertMany = db.transaction((speakers, listeners) => {
-      speakers.forEach(username => {
-        insertStmt.run(id, username, 'speaker');
+      speakers.forEach(({ username, displayName }) => {
+        insertStmt.run(id, username, displayName, 'speaker');
       });
 
-      listeners.forEach(username => {
-        insertStmt.run(id, username, 'listener');
+      listeners.forEach(({ username, displayName }) => {
+        insertStmt.run(id, username, displayName, 'listener');
       });
     });
 
@@ -352,12 +672,18 @@ app.get('/api/export/json', (req, res) => {
 
     const exportData = groups.map(group => {
       const speakers = db.prepare(
-        'SELECT username FROM usernames WHERE group_id = ? AND category = ? ORDER BY username ASC'
-      ).all(group.id, 'speaker').map(row => row.username);
+        'SELECT username, display_name FROM usernames WHERE group_id = ? AND category = ? ORDER BY username ASC'
+      ).all(group.id, 'speaker').map(row => ({
+        username: row.username,
+        displayName: row.display_name
+      }));
 
       const listeners = db.prepare(
-        'SELECT username FROM usernames WHERE group_id = ? AND category = ? ORDER BY username ASC'
-      ).all(group.id, 'listener').map(row => row.username);
+        'SELECT username, display_name FROM usernames WHERE group_id = ? AND category = ? ORDER BY username ASC'
+      ).all(group.id, 'listener').map(row => ({
+        username: row.username,
+        displayName: row.display_name
+      }));
 
       return {
         id: group.id,
@@ -383,15 +709,15 @@ app.get('/api/export/json', (req, res) => {
 app.get('/api/export/csv', (req, res) => {
   try {
     const rows = db.prepare(`
-      SELECT g.name as group_name, u.username, u.category
+      SELECT g.name as group_name, u.username, u.display_name, u.category
       FROM usernames u
       JOIN groups g ON u.group_id = g.id
       ORDER BY g.id, u.category, u.username
     `).all();
 
-    let csv = 'Group Name,Username,Category\n';
+    let csv = 'Group Name,Username,Display Name,Category\n';
     rows.forEach(row => {
-      csv += `"${row.group_name}","${row.username}","${row.category}"\n`;
+      csv += `"${row.group_name}","${row.username}","${row.display_name || ''}","${row.category}"\n`;
     });
 
     res.setHeader('Content-Type', 'text/csv');
@@ -402,6 +728,89 @@ app.get('/api/export/csv', (req, res) => {
   } catch (error) {
     logger.error('Error exporting CSV:', error);
     res.status(500).json({ error: 'Failed to export data' });
+  }
+});
+
+// Get statistics
+app.get('/api/statistics', (req, res) => {
+  try {
+    // Total counts
+    const totalGroups = db.prepare('SELECT COUNT(*) as count FROM groups').get().count;
+    const totalSpeakers = db.prepare('SELECT COUNT(*) as count FROM usernames WHERE category = ?').get('speaker').count;
+    const totalListeners = db.prepare('SELECT COUNT(*) as count FROM usernames WHERE category = ?').get('listener').count;
+    const totalUsers = totalSpeakers + totalListeners;
+
+    // Average users per group
+    const avgUsersPerGroup = totalGroups > 0 ? (totalUsers / totalGroups).toFixed(2) : 0;
+
+    // Top 5 largest groups
+    const topGroups = db.prepare(`
+      SELECT g.id, g.name, COUNT(u.id) as user_count
+      FROM groups g
+      LEFT JOIN usernames u ON g.id = u.group_id
+      GROUP BY g.id
+      ORDER BY user_count DESC
+      LIMIT 5
+    `).all();
+
+    // Groups with user counts
+    const groupDistribution = db.prepare(`
+      SELECT g.id, g.name,
+             SUM(CASE WHEN u.category = 'speaker' THEN 1 ELSE 0 END) as speakers,
+             SUM(CASE WHEN u.category = 'listener' THEN 1 ELSE 0 END) as listeners
+      FROM groups g
+      LEFT JOIN usernames u ON g.id = u.group_id
+      GROUP BY g.id
+      ORDER BY g.id ASC
+    `).all();
+
+    // Growth over time (last 30 days if created_at exists)
+    const growthData = db.prepare(`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM usernames
+      WHERE created_at >= date('now', '-30 days')
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `).all();
+
+    // Speaker/Listener ratio by group
+    const ratioByGroup = db.prepare(`
+      SELECT g.name,
+             SUM(CASE WHEN u.category = 'speaker' THEN 1 ELSE 0 END) as speakers,
+             SUM(CASE WHEN u.category = 'listener' THEN 1 ELSE 0 END) as listeners
+      FROM groups g
+      LEFT JOIN usernames u ON g.id = u.group_id
+      GROUP BY g.id
+      HAVING speakers > 0 OR listeners > 0
+    `).all();
+
+    // Empty groups count
+    const emptyGroups = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM groups g
+      LEFT JOIN usernames u ON g.id = u.group_id
+      WHERE u.id IS NULL
+    `).get().count;
+
+    res.json({
+      summary: {
+        totalGroups,
+        totalSpeakers,
+        totalListeners,
+        totalUsers,
+        avgUsersPerGroup: parseFloat(avgUsersPerGroup),
+        emptyGroups
+      },
+      topGroups,
+      groupDistribution,
+      growthData,
+      ratioByGroup
+    });
+
+    logger.info('Statistics retrieved');
+  } catch (error) {
+    logger.error('Error getting statistics:', error);
+    res.status(500).json({ error: 'Failed to retrieve statistics' });
   }
 });
 
@@ -436,25 +845,49 @@ app.post('/api/import/json', (req, res) => {
         const groupId = result.lastInsertRowid;
         importedGroups++;
 
-        const insertUsername = db.prepare('INSERT OR IGNORE INTO usernames (group_id, username, category) VALUES (?, ?, ?)');
+        const insertUsername = db.prepare('INSERT OR IGNORE INTO usernames (group_id, username, display_name, category) VALUES (?, ?, ?, ?)');
 
         if (Array.isArray(group.speakers)) {
-          group.speakers.forEach(username => {
-            const sanitized = sanitizeUsername(username);
-            const usernameValidation = validateUsername(sanitized);
-            if (usernameValidation.valid && sanitized.length > 0) {
-              insertUsername.run(groupId, sanitized, 'speaker');
+          group.speakers.forEach(item => {
+            // Handle both old format (string) and new format (object)
+            let username, displayName;
+            if (typeof item === 'string') {
+              const parsed = parseUsernameAndDisplay(item);
+              username = parsed.username;
+              displayName = parsed.displayName;
+            } else if (typeof item === 'object' && item.username) {
+              username = item.username;
+              displayName = item.displayName || null;
+            } else {
+              return;
+            }
+
+            const usernameValidation = validateUsername(username);
+            if (usernameValidation.valid && username.length > 0) {
+              insertUsername.run(groupId, username, displayName, 'speaker');
               importedUsernames++;
             }
           });
         }
 
         if (Array.isArray(group.listeners)) {
-          group.listeners.forEach(username => {
-            const sanitized = sanitizeUsername(username);
-            const usernameValidation = validateUsername(sanitized);
-            if (usernameValidation.valid && sanitized.length > 0) {
-              insertUsername.run(groupId, sanitized, 'listener');
+          group.listeners.forEach(item => {
+            // Handle both old format (string) and new format (object)
+            let username, displayName;
+            if (typeof item === 'string') {
+              const parsed = parseUsernameAndDisplay(item);
+              username = parsed.username;
+              displayName = parsed.displayName;
+            } else if (typeof item === 'object' && item.username) {
+              username = item.username;
+              displayName = item.displayName || null;
+            } else {
+              return;
+            }
+
+            const usernameValidation = validateUsername(username);
+            if (usernameValidation.valid && username.length > 0) {
+              insertUsername.run(groupId, username, displayName, 'listener');
               importedUsernames++;
             }
           });
@@ -474,6 +907,220 @@ app.post('/api/import/json', (req, res) => {
   } catch (error) {
     logger.error('Error importing JSON:', error);
     res.status(500).json({ error: 'Failed to import data' });
+  }
+});
+
+// === VIDEO MANAGEMENT API ===
+
+// Get all videos
+app.get('/api/videos', (req, res) => {
+  try {
+    const videos = db.prepare('SELECT * FROM videos ORDER BY created_at DESC').all();
+    res.json(videos);
+  } catch (error) {
+    logger.error('Error fetching videos:', error);
+    res.status(500).json({ error: 'Failed to fetch videos' });
+  }
+});
+
+// Search videos by title and description
+app.get('/api/videos/search/:query', (req, res) => {
+  try {
+    const { query } = req.params;
+    const searchTerm = `%${query}%`;
+
+    const videos = db.prepare(`
+      SELECT * FROM videos
+      WHERE LOWER(title) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?)
+      ORDER BY created_at DESC
+    `).all(searchTerm, searchTerm);
+
+    res.json(videos);
+  } catch (error) {
+    logger.error('Error searching videos:', error);
+    res.status(500).json({ error: 'Failed to search videos' });
+  }
+});
+
+// Get single video
+app.get('/api/videos/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    res.json(video);
+  } catch (error) {
+    logger.error('Error fetching video:', error);
+    res.status(500).json({ error: 'Failed to fetch video' });
+  }
+});
+
+// Upload new video
+app.post('/api/videos', upload.single('video'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No video file uploaded' });
+    }
+
+    const { title, description, recording_date, duration, metadata } = req.body;
+
+    if (!title) {
+      // Delete uploaded file if validation fails
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    const result = db.prepare(`
+      INSERT INTO videos (title, description, recording_date, file_path, file_name, file_size, duration, mime_type, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      title,
+      description || null,
+      recording_date || null,
+      req.file.path,
+      req.file.filename,
+      req.file.size,
+      duration ? parseInt(duration) : null,
+      req.file.mimetype,
+      metadata || null
+    );
+
+    logger.info(`Video uploaded: ${title} (ID: ${result.lastInsertRowid})`);
+
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(result.lastInsertRowid);
+    res.json(video);
+  } catch (error) {
+    logger.error('Error uploading video:', error);
+    // Clean up file if database insert fails
+    if (req.file) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {
+        logger.error('Error deleting file:', e);
+      }
+    }
+    res.status(500).json({ error: 'Failed to upload video' });
+  }
+});
+
+// Update video metadata
+app.put('/api/videos/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, recording_date, duration, metadata } = req.body;
+
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    const result = db.prepare(`
+      UPDATE videos
+      SET title = ?, description = ?, recording_date = ?, duration = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      title || video.title,
+      description !== undefined ? description : video.description,
+      recording_date !== undefined ? recording_date : video.recording_date,
+      duration !== undefined ? (duration ? parseInt(duration) : null) : video.duration,
+      metadata !== undefined ? metadata : video.metadata,
+      id
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    logger.info(`Video updated: ID ${id}`);
+    const updatedVideo = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+    res.json(updatedVideo);
+  } catch (error) {
+    logger.error('Error updating video:', error);
+    res.status(500).json({ error: 'Failed to update video' });
+  }
+});
+
+// Delete video
+app.delete('/api/videos/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    // Delete file from disk
+    try {
+      if (fs.existsSync(video.file_path)) {
+        fs.unlinkSync(video.file_path);
+      }
+    } catch (fileError) {
+      logger.error('Error deleting video file:', fileError);
+    }
+
+    // Delete from database
+    const result = db.prepare('DELETE FROM videos WHERE id = ?').run(id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    logger.info(`Video deleted: ID ${id}`);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting video:', error);
+    res.status(500).json({ error: 'Failed to delete video' });
+  }
+});
+
+// Stream video
+app.get('/api/videos/:id/stream', (req, res) => {
+  try {
+    const { id } = req.params;
+    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    if (!fs.existsSync(video.file_path)) {
+      return res.status(404).json({ error: 'Video file not found' });
+    }
+
+    const stat = fs.statSync(video.file_path);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(video.file_path, { start, end });
+      const head = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      };
+      res.writeHead(206, head);
+      file.pipe(res);
+    } else {
+      const head = {
+        'Content-Length': fileSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      };
+      res.writeHead(200, head);
+      fs.createReadStream(video.file_path).pipe(res);
+    }
+  } catch (error) {
+    logger.error('Error streaming video:', error);
+    res.status(500).json({ error: 'Failed to stream video' });
   }
 });
 

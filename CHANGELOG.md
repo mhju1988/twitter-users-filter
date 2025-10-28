@@ -1,5 +1,135 @@
 # Changelog - Improvements Implemented
 
+## Version 3.0.0 - Power User Features & Enhanced UX
+
+### 🎯 Major New Features
+
+#### 1. Undo/Redo System
+- **Full History Tracking**: Records all user actions (add, remove, create, delete, rename)
+- **Capacity**: Maintains history of up to 50 actions
+- **Intelligent Undo**: Properly reverses complex operations
+- **Redo Support**: Re-apply undone actions
+- **UI Controls**: Dedicated undo/redo buttons with disabled states
+- **Keyboard Shortcuts**: Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+Shift+Z (redo alternative)
+- **Location**: `public/index.html:738-875`
+
+#### 2. Dark Mode
+- **CSS Variables**: Complete theme system using CSS custom properties
+- **Smooth Transitions**: Animated theme switching
+- **Persistent Settings**: Theme preference saved to localStorage
+- **Toggle Button**: Easy-to-access theme switcher in toolbar (🌙/☀️)
+- **Comprehensive Coverage**: All UI elements support both light and dark themes
+- **Location**: `public/index.html:8-34, 877-900`
+
+#### 3. Drag & Drop
+- **Intuitive Moving**: Drag usernames between groups and categories
+- **Visual Feedback**: Opacity changes during drag, highlight on drop zones
+- **Cross-Category**: Move between Speakers and Listeners
+- **Cross-Group**: Move users to different groups
+- **Smart Validation**: Prevents dropping on same location
+- **Disabled in Bulk Mode**: Automatically disabled when bulk operations are active
+- **Location**: `public/index.html:1054-1123`
+
+#### 4. Bulk Operations
+- **Bulk Mode Toggle**: Dedicated button to enter/exit bulk mode
+- **Checkbox Selection**: Click checkboxes to select multiple users
+- **Select All/Deselect All**: Quick selection controls
+- **Bulk Delete**: Delete multiple users at once with confirmation
+- **Bulk Move**: Move selected users to a different group
+- **Visual Indicators**: Selected users show green highlight
+- **Selection Count**: Real-time feedback on number of selected users
+- **Location**: `public/index.html:902-1015`
+
+#### 5. Keyboard Shortcuts
+- **Undo**: Ctrl/Cmd+Z
+- **Redo**: Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z
+- **New Group**: Ctrl/Cmd+N
+- **Focus Search**: Ctrl/Cmd+F
+- **Toggle Bulk Mode**: Ctrl/Cmd+B
+- **Clear/Deselect**: Escape key
+- **Cross-Platform**: Works on Windows, Mac, and Linux
+- **Location**: `public/index.html:1017-1052`
+
+#### 6. Pagination
+- **Automatic Activation**: Shows when more than 20 groups exist
+- **Navigation Controls**: First, Previous, Next, Last buttons
+- **Page Info**: Displays current page, total pages, and item range
+- **Smooth Scrolling**: Auto-scroll to top on page change
+- **Responsive**: Adapts to dataset size
+- **Location**: `public/index.html:1175-1238`
+
+### 🎨 UI/UX Improvements
+
+#### Enhanced Visual Design
+- **Updated Toolbar**: Reorganized with new buttons for all features
+- **Bulk Controls Bar**: Appears when bulk mode is active
+- **Pagination UI**: Clean, modern pagination controls
+- **Theme Toggle**: Beautiful moon/sun icon toggle
+- **Better Spacing**: Improved layout for new controls
+
+#### Improved Feedback
+- **Button States**: Undo/redo buttons show enabled/disabled states
+- **Selection Highlighting**: Visual feedback for selected users in bulk mode
+- **Drag Feedback**: Opacity and highlighting during drag operations
+- **Page Navigation**: Clear indication of current page and available navigation
+
+### 🔧 Technical Improvements
+
+#### State Management
+- **Action History**: Maintains stack of up to 50 actions with index tracking
+- **Bulk Selection**: Set-based selection tracking for performance
+- **Pagination State**: Current page and items per page tracking
+- **Theme Persistence**: localStorage integration for theme preference
+
+#### Code Organization
+- **Modular Functions**: Clear separation of concerns
+- **Event Handlers**: Comprehensive keyboard shortcut system
+- **History Management**: Efficient undo/redo with proper cleanup
+- **CSS Variables**: Maintainable theming system
+
+### 📝 Documentation Updates
+
+#### Updated README.md
+- New Features section for v3.0
+- Detailed usage instructions for each feature
+- Keyboard shortcuts reference
+- Best practices guide
+
+#### Updated CHANGELOG.md
+- Comprehensive v3.0 documentation
+- Feature locations in code
+- Technical implementation details
+
+### 📊 Statistics
+
+#### Code Changes
+- **index.html**: 1,082 lines → 1,756 lines (+674 lines, +62%)
+- **New Functions**: 20+ new JavaScript functions
+- **New CSS**: 100+ lines of new styles for dark mode and features
+- **New UI Elements**: 7 new toolbar buttons, pagination controls
+
+#### Features Summary
+- **6 Major Features**: Undo/Redo, Dark Mode, Drag & Drop, Bulk Ops, Keyboard Shortcuts, Pagination
+- **9 Keyboard Shortcuts**: Full keyboard navigation support
+- **50 Action History**: Comprehensive undo/redo capability
+- **20 Items Per Page**: Optimized pagination
+
+### 🚀 Performance Notes
+
+- **No Backend Changes**: All features implemented client-side
+- **Efficient State Management**: Minimal re-renders
+- **Optimized Pagination**: Only renders visible groups
+- **Smooth Animations**: CSS transitions for better UX
+
+### 🔄 Migration Notes
+
+- **Backward Compatible**: Works with existing databases
+- **No Breaking Changes**: All v2.0 features remain intact
+- **Automatic Theme**: Defaults to light mode, users can switch
+- **Progressive Enhancement**: Features gracefully degrade if needed
+
+---
+
 ## Version 2.0.0 - Enhanced Security, Features & Performance
 
 ### 🔐 Security Enhancements

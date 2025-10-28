@@ -21,6 +21,14 @@ A full-stack web application for managing speakers and listeners with intelligen
 - **📝 Logging**: Professional logging with Winston
 - **⚙️ Environment Config**: Configurable via .env file
 
+### New in v3.0
+- **↶↷ Undo/Redo**: Full undo/redo support for all actions (up to 50 steps)
+- **🌙 Dark Mode**: Beautiful dark theme with persistent settings
+- **⌨️ Keyboard Shortcuts**: Power user features (Ctrl+Z, Ctrl+Y, Ctrl+N, Ctrl+F, Ctrl+B, Esc)
+- **🎯 Drag & Drop**: Intuitive drag-and-drop to move users between groups and categories
+- **☑ Bulk Operations**: Select multiple users, bulk delete, bulk move between groups
+- **📄 Pagination**: Automatic pagination for large datasets (20 groups per page)
+
 ## Prerequisites
 
 - Node.js (v14 or higher)
@@ -107,6 +115,66 @@ username4
    - **Replace**: Delete all and import (⚠️ Warning shown)
 4. Click "Import" to process
 5. Get confirmation with import statistics
+
+### Using Undo/Redo
+
+**Actions you can undo/redo:**
+- Adding usernames
+- Removing usernames
+- Creating groups
+- Deleting groups
+- Renaming groups
+
+**How to use:**
+- Click the "↶ Undo" and "↷ Redo" buttons in the toolbar
+- Or use keyboard shortcuts: **Ctrl+Z** (undo) and **Ctrl+Y** or **Ctrl+Shift+Z** (redo)
+- History tracks up to 50 actions
+
+### Using Dark Mode
+
+1. Click the 🌙/☀️ button in the toolbar to toggle between light and dark themes
+2. Your preference is automatically saved and persists across sessions
+3. Dark mode uses a carefully designed color scheme for comfortable viewing
+
+### Using Drag & Drop
+
+1. **Grab any username tag** with your mouse
+2. **Drag it** to a different group or category (Speakers/Listeners)
+3. **Drop it** in the desired location
+4. The user is automatically moved
+5. Works across groups and between Speakers/Listeners categories
+
+**Note:** Drag & drop is disabled in Bulk Mode
+
+### Using Bulk Operations
+
+1. Click **"☑ Bulk"** button to enter Bulk Mode
+2. **Select users** by clicking checkboxes next to usernames
+3. **Use bulk controls** that appear:
+   - **Select All**: Select all users across all groups
+   - **Deselect All**: Clear selection
+   - **Delete Selected**: Remove all selected users
+   - **Move to...**: Choose target group and click "Move" to relocate selected users
+4. Click **"☑ Bulk"** again to exit Bulk Mode
+
+### Keyboard Shortcuts
+
+Enhance your productivity with these shortcuts:
+
+- **Ctrl+Z / Cmd+Z**: Undo last action
+- **Ctrl+Y / Cmd+Y**: Redo last undone action
+- **Ctrl+Shift+Z / Cmd+Shift+Z**: Redo (alternative)
+- **Ctrl+N / Cmd+N**: Create new group
+- **Ctrl+F / Cmd+F**: Focus search bar
+- **Ctrl+B / Cmd+B**: Toggle Bulk Mode
+- **Escape**: Clear search results / Deselect all (in Bulk Mode)
+
+### Pagination
+
+- **Automatic**: Pagination appears when you have more than 20 groups
+- **Navigation**: Use First, Previous, Next, and Last buttons
+- **Info**: Shows current page, total pages, and range of groups displayed
+- **Smooth scrolling**: Automatically scrolls to top when changing pages
 
 ## API Endpoints
 
