@@ -135,6 +135,35 @@ try {
   console.error('Migration error (created_by):', error);
 }
 
+// Migration: Ensure users table has expected columns
+try {
+  const usersTableInfo = db.prepare("PRAGMA table_info(users)").all();
+  const hasColumn = (name) => usersTableInfo.some(col => col.name === name);
+
+  if (!hasColumn('full_name')) {
+    console.log('Migrating database: Adding full_name to users...');
+    db.exec('ALTER TABLE users ADD COLUMN full_name TEXT');
+  }
+  if (!hasColumn('is_active')) {
+    console.log('Migrating database: Adding is_active to users...');
+    db.exec('ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1');
+  }
+  if (!hasColumn('last_login')) {
+    console.log('Migrating database: Adding last_login to users...');
+    db.exec('ALTER TABLE users ADD COLUMN last_login DATETIME');
+  }
+  if (!hasColumn('created_at')) {
+    console.log('Migrating database: Adding created_at to users...');
+    db.exec('ALTER TABLE users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+  }
+  if (!hasColumn('updated_at')) {
+    console.log('Migrating database: Adding updated_at to users...');
+    db.exec('ALTER TABLE users ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+  }
+} catch (error) {
+  console.error('Migration error (users):', error);
+}
+
 // Validation functions
 const validateUsername = (username) => {
   if (!username || typeof username !== 'string') return { valid: false, error: 'Username must be a string' };
@@ -419,10 +448,137 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
   }
 });
 
+// === USER MANAGEMENT API (Admin Only) ===
+
+// Get all users (admin only)
+app.get('/api/users', authenticateToken, authorizeRole('admin'), (req, res) => {
+  try {
+    const users = db.prepare(`
+      SELECT id, username, email, full_name, role, is_active, last_login, created_at
+      FROM users
+      ORDER BY created_at ASC
+    `).all();
+
+    res.json(users);
+  } catch (error) {
+    logger.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Update user role (admin only)
+app.put('/api/users/:id/role', authenticateToken, authorizeRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    // Validate role
+    const validRoles = ['admin', 'editor', 'viewer'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be: admin, editor, or viewer' });
+    }
+
+    // Prevent changing own role
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'You cannot change your own role' });
+    }
+
+    // Check if user exists
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update role
+    const result = db.prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(role, id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    logger.info(`User role updated: ID ${id}, new role: ${role}`);
+    res.json({ success: true, message: 'User role updated successfully' });
+  } catch (error) {
+    logger.error('Error updating user role:', error);
+    res.status(500).json({ error: 'Failed to update user role' });
+  }
+});
+
+// Toggle user active status (admin only)
+app.put('/api/users/:id/status', authenticateToken, authorizeRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    // Prevent deactivating own account
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'You cannot deactivate your own account' });
+    }
+
+    // Check if user exists
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update status
+    const result = db.prepare('UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(is_active ? 1 : 0, id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    logger.info(`User status updated: ID ${id}, active: ${is_active}`);
+    res.json({ success: true, message: 'User status updated successfully' });
+  } catch (error) {
+    logger.error('Error updating user status:', error);
+    res.status(500).json({ error: 'Failed to update user status' });
+  }
+});
+
+// Delete user (admin only)
+app.delete('/api/users/:id', authenticateToken, authorizeRole('admin'), (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Prevent deleting own account
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'You cannot delete your own account' });
+    }
+
+    // Check if user exists
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if it's the last admin
+    if (user.role === 'admin') {
+      const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE role = ?').get('admin');
+      if (adminCount.count <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the last admin user' });
+      }
+    }
+
+    // Delete user
+    const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    logger.info(`User deleted: ID ${id} (${user.username})`);
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    logger.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
 // API Routes
 
-// Get all groups with their usernames
-app.get('/api/groups', (req, res) => {
+// Get all groups with their usernames (requires authentication)
+app.get('/api/groups', authenticateToken, (req, res) => {
   try {
     const groups = db.prepare('SELECT * FROM groups ORDER BY id ASC').all();
 
@@ -456,8 +612,8 @@ app.get('/api/groups', (req, res) => {
   }
 });
 
-// Create a new group
-app.post('/api/groups', (req, res) => {
+// Create a new group (editor+ only)
+app.post('/api/groups', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const { name } = req.body;
 
@@ -481,8 +637,8 @@ app.post('/api/groups', (req, res) => {
   }
 });
 
-// Update group name
-app.put('/api/groups/:id', (req, res) => {
+// Update group name (editor+ only)
+app.put('/api/groups/:id', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
@@ -506,8 +662,8 @@ app.put('/api/groups/:id', (req, res) => {
   }
 });
 
-// Delete a group
-app.delete('/api/groups/:id', (req, res) => {
+// Delete a group (admin only)
+app.delete('/api/groups/:id', authenticateToken, authorizeRole('admin'), (req, res) => {
   try {
     const { id } = req.params;
 
@@ -534,8 +690,8 @@ app.delete('/api/groups/:id', (req, res) => {
   }
 });
 
-// Add usernames to a group
-app.post('/api/groups/:id/usernames', (req, res) => {
+// Add usernames to a group (editor+ only)
+app.post('/api/groups/:id/usernames', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const { id } = req.params;
     let { speakers, listeners } = req.body;
@@ -607,8 +763,8 @@ app.post('/api/groups/:id/usernames', (req, res) => {
   }
 });
 
-// Remove a username
-app.delete('/api/usernames/:username/:category', (req, res) => {
+// Remove a username (editor+ only)
+app.delete('/api/usernames/:username/:category', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const { username, category } = req.params;
 
@@ -625,8 +781,8 @@ app.delete('/api/usernames/:username/:category', (req, res) => {
   }
 });
 
-// Check if username exists (for duplicate checking)
-app.get('/api/usernames/check/:username', (req, res) => {
+// Check if username exists (for duplicate checking) (requires authentication)
+app.get('/api/usernames/check/:username', authenticateToken, (req, res) => {
   try {
     const { username } = req.params;
 
@@ -639,8 +795,8 @@ app.get('/api/usernames/check/:username', (req, res) => {
   }
 });
 
-// Search usernames
-app.get('/api/search', (req, res) => {
+// Search usernames (requires authentication)
+app.get('/api/search', authenticateToken, (req, res) => {
   try {
     const { query } = req.query;
 
@@ -665,8 +821,8 @@ app.get('/api/search', (req, res) => {
   }
 });
 
-// Export all data as JSON
-app.get('/api/export/json', (req, res) => {
+// Export all data as JSON (editor+ only)
+app.get('/api/export/json', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const groups = db.prepare('SELECT * FROM groups ORDER BY id ASC').all();
 
@@ -705,8 +861,8 @@ app.get('/api/export/json', (req, res) => {
   }
 });
 
-// Export all data as CSV
-app.get('/api/export/csv', (req, res) => {
+// Export all data as CSV (editor+ only)
+app.get('/api/export/csv', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const rows = db.prepare(`
       SELECT g.name as group_name, u.username, u.display_name, u.category
@@ -731,8 +887,8 @@ app.get('/api/export/csv', (req, res) => {
   }
 });
 
-// Get statistics
-app.get('/api/statistics', (req, res) => {
+// Get statistics (requires authentication)
+app.get('/api/statistics', authenticateToken, (req, res) => {
   try {
     // Total counts
     const totalGroups = db.prepare('SELECT COUNT(*) as count FROM groups').get().count;
@@ -814,8 +970,8 @@ app.get('/api/statistics', (req, res) => {
   }
 });
 
-// Import data from JSON
-app.post('/api/import/json', (req, res) => {
+// Import data from JSON (editor+ only)
+app.post('/api/import/json', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const { groups, replaceExisting } = req.body;
 
@@ -912,10 +1068,15 @@ app.post('/api/import/json', (req, res) => {
 
 // === VIDEO MANAGEMENT API ===
 
-// Get all videos
-app.get('/api/videos', (req, res) => {
+// Get all videos (requires authentication)
+app.get('/api/videos', authenticateToken, (req, res) => {
   try {
-    const videos = db.prepare('SELECT * FROM videos ORDER BY created_at DESC').all();
+    const videos = db.prepare(`
+      SELECT v.*, u.username as creator_username, u.full_name as creator_name
+      FROM videos v
+      LEFT JOIN users u ON v.created_by = u.id
+      ORDER BY v.created_at DESC
+    `).all();
     res.json(videos);
   } catch (error) {
     logger.error('Error fetching videos:', error);
@@ -923,16 +1084,18 @@ app.get('/api/videos', (req, res) => {
   }
 });
 
-// Search videos by title and description
-app.get('/api/videos/search/:query', (req, res) => {
+// Search videos by title and description (requires authentication)
+app.get('/api/videos/search/:query', authenticateToken, (req, res) => {
   try {
     const { query } = req.params;
     const searchTerm = `%${query}%`;
 
     const videos = db.prepare(`
-      SELECT * FROM videos
-      WHERE LOWER(title) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?)
-      ORDER BY created_at DESC
+      SELECT v.*, u.username as creator_username, u.full_name as creator_name
+      FROM videos v
+      LEFT JOIN users u ON v.created_by = u.id
+      WHERE LOWER(v.title) LIKE LOWER(?) OR LOWER(v.description) LIKE LOWER(?)
+      ORDER BY v.created_at DESC
     `).all(searchTerm, searchTerm);
 
     res.json(videos);
@@ -942,11 +1105,16 @@ app.get('/api/videos/search/:query', (req, res) => {
   }
 });
 
-// Get single video
-app.get('/api/videos/:id', (req, res) => {
+// Get single video (requires authentication)
+app.get('/api/videos/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
-    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
+    const video = db.prepare(`
+      SELECT v.*, u.username as creator_username, u.full_name as creator_name
+      FROM videos v
+      LEFT JOIN users u ON v.created_by = u.id
+      WHERE v.id = ?
+    `).get(id);
 
     if (!video) {
       return res.status(404).json({ error: 'Video not found' });
@@ -959,8 +1127,8 @@ app.get('/api/videos/:id', (req, res) => {
   }
 });
 
-// Upload new video
-app.post('/api/videos', upload.single('video'), (req, res) => {
+// Upload new video (editor+ only)
+app.post('/api/videos', authenticateToken, authorizeRole('admin', 'editor'), upload.single('video'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No video file uploaded' });
@@ -975,8 +1143,8 @@ app.post('/api/videos', upload.single('video'), (req, res) => {
     }
 
     const result = db.prepare(`
-      INSERT INTO videos (title, description, recording_date, file_path, file_name, file_size, duration, mime_type, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO videos (title, description, recording_date, file_path, file_name, file_size, duration, mime_type, metadata, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       title,
       description || null,
@@ -986,7 +1154,8 @@ app.post('/api/videos', upload.single('video'), (req, res) => {
       req.file.size,
       duration ? parseInt(duration) : null,
       req.file.mimetype,
-      metadata || null
+      metadata || null,
+      req.user.id
     );
 
     logger.info(`Video uploaded: ${title} (ID: ${result.lastInsertRowid})`);
@@ -1007,8 +1176,8 @@ app.post('/api/videos', upload.single('video'), (req, res) => {
   }
 });
 
-// Update video metadata
-app.put('/api/videos/:id', (req, res) => {
+// Update video metadata (editor+ only, editors can only edit own videos)
+app.put('/api/videos/:id', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, recording_date, duration, metadata } = req.body;
@@ -1016,6 +1185,11 @@ app.put('/api/videos/:id', (req, res) => {
     const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
     if (!video) {
       return res.status(404).json({ error: 'Video not found' });
+    }
+
+    // Check if user owns the video (editors can only edit their own)
+    if (req.user.role !== 'admin' && video.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied. You can only edit your own videos.' });
     }
 
     const result = db.prepare(`
@@ -1044,14 +1218,19 @@ app.put('/api/videos/:id', (req, res) => {
   }
 });
 
-// Delete video
-app.delete('/api/videos/:id', (req, res) => {
+// Delete video (editor+ only, editors can only delete own videos)
+app.delete('/api/videos/:id', authenticateToken, authorizeRole('admin', 'editor'), (req, res) => {
   try {
     const { id } = req.params;
 
     const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
     if (!video) {
       return res.status(404).json({ error: 'Video not found' });
+    }
+
+    // Check if user owns the video (editors can only delete their own)
+    if (req.user.role !== 'admin' && video.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied. You can only delete your own videos.' });
     }
 
     // Delete file from disk
@@ -1078,8 +1257,8 @@ app.delete('/api/videos/:id', (req, res) => {
   }
 });
 
-// Stream video
-app.get('/api/videos/:id/stream', (req, res) => {
+// Stream video (requires authentication)
+app.get('/api/videos/:id/stream', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
     const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(id);
