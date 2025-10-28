@@ -1553,59 +1553,45 @@
             const redoBtn = document.getElementById('redoBtn');
             const bulkBtn = document.getElementById('bulkModeBtn');
 
+            const disableEl = (el, title) => {
+                if (!el) return;
+                el.disabled = true;
+                el.style.opacity = '0.5';
+                el.style.cursor = 'not-allowed';
+                if (title) el.title = title;
+            };
+            const enableEl = (el) => {
+                if (!el) return;
+                el.disabled = false;
+                el.style.opacity = '';
+                el.style.cursor = '';
+                // Do not clobber legitimate titles elsewhere
+                if (el.title && el.title.startsWith('Viewers cannot')) el.title = '';
+            };
+
             if (isViewer) {
                 // Viewers: read-only access
-                if (addBtn) {
-                    addBtn.disabled = true;
-                    addBtn.style.opacity = '0.5';
-                    addBtn.style.cursor = 'not-allowed';
-                    addBtn.title = 'Viewers cannot add usernames';
-                }
-                if (createGroupBtn) {
-                    createGroupBtn.disabled = true;
-                    createGroupBtn.style.opacity = '0.5';
-                    createGroupBtn.style.cursor = 'not-allowed';
-                    createGroupBtn.title = 'Viewers cannot create groups';
-                }
-                if (importBtn) {
-                    importBtn.disabled = true;
-                    importBtn.style.opacity = '0.5';
-                    importBtn.style.cursor = 'not-allowed';
-                    importBtn.title = 'Viewers cannot import data';
-                }
-                if (exportJsonBtn) {
-                    exportJsonBtn.disabled = true;
-                    exportJsonBtn.style.opacity = '0.5';
-                    exportJsonBtn.style.cursor = 'not-allowed';
-                    exportJsonBtn.title = 'Viewers cannot export data';
-                }
-                if (exportCsvBtn) {
-                    exportCsvBtn.disabled = true;
-                    exportCsvBtn.style.opacity = '0.5';
-                    exportCsvBtn.style.cursor = 'not-allowed';
-                    exportCsvBtn.title = 'Viewers cannot export data';
-                }
-                if (uploadVideoBtn) {
-                    uploadVideoBtn.disabled = true;
-                    uploadVideoBtn.style.opacity = '0.5';
-                    uploadVideoBtn.style.cursor = 'not-allowed';
-                    uploadVideoBtn.title = 'Viewers cannot upload videos';
-                }
-                [undoBtn, redoBtn, bulkBtn].forEach(b => {
-                    if (b) {
-                        b.disabled = true;
-                        b.style.opacity = '0.5';
-                        b.style.cursor = 'not-allowed';
-                        b.title = 'Viewers cannot modify data';
-                    }
-                });
+                disableEl(addBtn, 'Viewers cannot add usernames');
+                disableEl(createGroupBtn, 'Viewers cannot create groups');
+                disableEl(importBtn, 'Viewers cannot import data');
+                disableEl(exportJsonBtn, 'Viewers cannot export data');
+                disableEl(exportCsvBtn, 'Viewers cannot export data');
+                disableEl(uploadVideoBtn, 'Viewers cannot upload videos');
+                [undoBtn, redoBtn, bulkBtn].forEach(b => disableEl(b, 'Viewers cannot modify data'));
                 // In case any delete buttons already exist in DOM, soften them
                 document.querySelectorAll('.delete-group-btn').forEach(btn => {
-                    btn.disabled = true;
-                    btn.style.opacity = '0.5';
-                    btn.style.cursor = 'not-allowed';
-                    btn.title = 'Viewers cannot delete groups';
+                    disableEl(btn, 'Viewers cannot delete groups');
                 });
+            } else {
+                // Editors/Admins: ensure controls are enabled (might be disabled from a prior viewer session)
+                enableEl(addBtn);
+                enableEl(createGroupBtn);
+                enableEl(importBtn);
+                enableEl(exportJsonBtn);
+                enableEl(exportCsvBtn);
+                enableEl(uploadVideoBtn);
+                [undoBtn, redoBtn, bulkBtn].forEach(enableEl);
+                document.querySelectorAll('.delete-group-btn').forEach(enableEl);
             }
         }
 
