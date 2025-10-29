@@ -21,11 +21,12 @@ async function initializeDatabase() {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS usernames (
         id ${db.isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${db.isPostgres ? '' : 'AUTOINCREMENT'},
-        name TEXT NOT NULL,
-        type TEXT NOT NULL CHECK (type IN ('speaker', 'listener')),
         group_id INTEGER NOT NULL,
+        username TEXT NOT NULL,
+        display_name TEXT,
+        category TEXT NOT NULL CHECK (category IN ('speaker', 'listener')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+        FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE${db.isPostgres ? '' : ',\n        UNIQUE(username, category)'}
       );
     `);
 
@@ -65,8 +66,8 @@ async function initializeDatabase() {
 
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_usernames_group ON usernames(group_id)',
-      'CREATE INDEX IF NOT EXISTS idx_usernames_type ON usernames(type)',
-      'CREATE INDEX IF NOT EXISTS idx_usernames_name ON usernames(name)',
+      'CREATE INDEX IF NOT EXISTS idx_usernames_category ON usernames(category)',
+      'CREATE INDEX IF NOT EXISTS idx_usernames_username ON usernames(username)',
       'CREATE INDEX IF NOT EXISTS idx_groups_name ON groups(name)',
       'CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)',
       'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
@@ -81,8 +82,43 @@ async function initializeDatabase() {
 
     console.log('Indexes created successfully');
 
-    // Migration: Add is_active column to users table if it doesn't exist
+    // Migration: Fix usernames table schema (name->username, type->category, add display_name)
     console.log('Running migrations...');
+    try {
+      if (db.isPostgres) {
+        // Check if usernames table has wrong schema
+        const hasNameColumn = await db.get(`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_name='usernames' AND column_name='name'
+        `);
+
+        if (hasNameColumn) {
+          console.log('Migrating usernames table schema...');
+          // Drop and recreate table with correct schema
+          await db.exec('DROP TABLE IF EXISTS usernames CASCADE');
+          await db.exec(`
+            CREATE TABLE usernames (
+              id SERIAL PRIMARY KEY,
+              group_id INTEGER NOT NULL,
+              username TEXT NOT NULL,
+              display_name TEXT,
+              category TEXT NOT NULL CHECK (category IN ('speaker', 'listener')),
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+            )
+          `);
+          await db.exec('CREATE INDEX IF NOT EXISTS idx_usernames_group ON usernames(group_id)');
+          await db.exec('CREATE INDEX IF NOT EXISTS idx_usernames_category ON usernames(category)');
+          await db.exec('CREATE INDEX IF NOT EXISTS idx_usernames_username ON usernames(username)');
+          console.log('Usernames table schema migrated successfully');
+        }
+      }
+    } catch (migrationError) {
+      console.error('Usernames table migration warning:', migrationError.message);
+    }
+
+    // Migration: Add is_active column to users table if it doesn't exist
     try {
       if (db.isPostgres) {
         // PostgreSQL: Check if column exists and add if missing
