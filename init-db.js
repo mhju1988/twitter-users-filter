@@ -37,6 +37,7 @@ async function initializeDatabase() {
         password TEXT NOT NULL,
         email TEXT UNIQUE,
         role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'editor', 'viewer')),
+        is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_login TIMESTAMP
       );
@@ -79,6 +80,40 @@ async function initializeDatabase() {
     }
 
     console.log('Indexes created successfully');
+
+    // Migration: Add is_active column to users table if it doesn't exist
+    console.log('Running migrations...');
+    try {
+      if (db.isPostgres) {
+        // PostgreSQL: Check if column exists and add if missing
+        const columnCheck = await db.get(`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_name='users' AND column_name='is_active'
+        `);
+
+        if (!columnCheck) {
+          console.log('Adding is_active column to users table...');
+          await db.exec('ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT true');
+          // Update existing users to be active
+          await db.exec('UPDATE users SET is_active = true WHERE is_active IS NULL');
+          console.log('is_active column added successfully');
+        }
+      } else {
+        // SQLite: Check if column exists
+        const tableInfo = await db.all("PRAGMA table_info(users)");
+        const hasIsActive = tableInfo.some(col => col.name === 'is_active');
+
+        if (!hasIsActive) {
+          console.log('Adding is_active column to users table...');
+          await db.exec('ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1');
+          console.log('is_active column added successfully');
+        }
+      }
+    } catch (migrationError) {
+      console.error('Migration warning:', migrationError.message);
+      // Continue even if migration fails (column might already exist)
+    }
 
     // Check if default group exists
     const groupCount = await db.get('SELECT COUNT(*) as count FROM groups');
