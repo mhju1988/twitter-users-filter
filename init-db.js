@@ -48,13 +48,17 @@ async function initializeDatabase() {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS videos (
         id ${db.isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${db.isPostgres ? '' : 'AUTOINCREMENT'},
-        filename TEXT NOT NULL,
-        original_name TEXT NOT NULL,
-        path TEXT NOT NULL,
-        size INTEGER,
+        title TEXT NOT NULL,
+        description TEXT,
+        recording_date TEXT,
+        file_path TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        file_size INTEGER,
+        duration INTEGER,
         mime_type TEXT,
+        metadata TEXT,
         uploaded_by INTEGER,
-        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
       );
     `);
@@ -73,7 +77,8 @@ async function initializeDatabase() {
       'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
       'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
       'CREATE INDEX IF NOT EXISTS idx_videos_uploaded_by ON videos(uploaded_by)',
-      'CREATE INDEX IF NOT EXISTS idx_videos_filename ON videos(filename)'
+      'CREATE INDEX IF NOT EXISTS idx_videos_filename ON videos(file_name)',
+      'CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)'
     ];
 
     for (const indexSql of indexes) {
@@ -149,6 +154,77 @@ async function initializeDatabase() {
     } catch (migrationError) {
       console.error('Migration warning:', migrationError.message);
       // Continue even if migration fails (column might already exist)
+    }
+
+    // Migration: Fix videos table schema (old schema had filename, uploaded_at instead of title, created_at, etc.)
+    try {
+      if (db.isPostgres) {
+        // Check if videos table has old schema (has 'filename' column instead of 'title')
+        const hasFilenameColumn = await db.get(`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_name='videos' AND column_name='filename'
+        `);
+
+        if (hasFilenameColumn) {
+          console.log('Migrating videos table schema...');
+          // Drop and recreate table with correct schema
+          await db.exec('DROP TABLE IF EXISTS videos CASCADE');
+          await db.exec(`
+            CREATE TABLE videos (
+              id SERIAL PRIMARY KEY,
+              title TEXT NOT NULL,
+              description TEXT,
+              recording_date TEXT,
+              file_path TEXT NOT NULL,
+              file_name TEXT NOT NULL,
+              file_size INTEGER,
+              duration INTEGER,
+              mime_type TEXT,
+              metadata TEXT,
+              uploaded_by INTEGER,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+            )
+          `);
+          await db.exec('CREATE INDEX IF NOT EXISTS idx_videos_uploaded_by ON videos(uploaded_by)');
+          await db.exec('CREATE INDEX IF NOT EXISTS idx_videos_filename ON videos(file_name)');
+          console.log('Videos table schema migrated successfully');
+        }
+      } else {
+        // SQLite: Check if videos table has old schema
+        const tableInfo = await db.all("PRAGMA table_info(videos)");
+        const hasFilename = tableInfo.some(col => col.name === 'filename');
+        const hasTitle = tableInfo.some(col => col.name === 'title');
+
+        if (hasFilename && !hasTitle) {
+          console.log('Migrating videos table schema for SQLite...');
+          // SQLite doesn't support column renaming easily, so we recreate the table
+          await db.exec('DROP TABLE IF EXISTS videos');
+          await db.exec(`
+            CREATE TABLE videos (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              description TEXT,
+              recording_date TEXT,
+              file_path TEXT NOT NULL,
+              file_name TEXT NOT NULL,
+              file_size INTEGER,
+              duration INTEGER,
+              mime_type TEXT,
+              metadata TEXT,
+              uploaded_by INTEGER,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+            )
+          `);
+          await db.exec('CREATE INDEX IF NOT EXISTS idx_videos_uploaded_by ON videos(uploaded_by)');
+          await db.exec('CREATE INDEX IF NOT EXISTS idx_videos_filename ON videos(file_name)');
+          console.log('Videos table schema migrated successfully for SQLite');
+        }
+      }
+    } catch (migrationError) {
+      console.error('Videos table migration warning:', migrationError.message);
     }
 
     // Check if default group exists
