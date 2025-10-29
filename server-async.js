@@ -114,6 +114,9 @@ const upload = multer({
   }
 });
 
+// Trust proxy (required for Railway, Heroku, etc.)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors({
   origin: true,
@@ -208,14 +211,14 @@ app.post('/api/auth/register', async (req, res) => {
     const userRole = isFirstUser ? 'admin' : (role || 'viewer');
 
     // Hash password
-    const password_hash = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
     const result = await db.run(`
-      INSERT INTO users (username, email, password_hash, full_name, role)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO users (username, email, password, role)
+      VALUES ($1, $2, $3, $4)
       RETURNING id
-    `, [username, email, password_hash, full_name || null, userRole]);
+    `, [username, email, hashedPassword, userRole]);
 
     logger.info(`User registered: ${username} (${userRole})`);
 
@@ -255,7 +258,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Verify password
-    const validPassword = await bcrypt.compare(password, user.password_hash);
+    const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
