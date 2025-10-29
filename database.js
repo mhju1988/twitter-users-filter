@@ -27,7 +27,8 @@ if (USE_POSTGRES) {
 
     async run(sql, params = []) {
       const result = await pool.query(sql, params);
-      return { changes: result.rowCount, lastID: result.rows[0]?.id };
+      const id = result.rows[0]?.id;
+      return { changes: result.rowCount, lastID: id, id: id };
     },
 
     async all(sql, params = []) {
@@ -64,7 +65,7 @@ if (USE_POSTGRES) {
     async run(sql, params = []) {
       const stmt = sqlite.prepare(sql);
       const result = stmt.run(...params);
-      return { changes: result.changes, lastID: result.lastInsertRowid };
+      return { changes: result.changes, lastID: result.lastInsertRowid, id: result.lastInsertRowid };
     },
 
     async all(sql, params = []) {

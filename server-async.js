@@ -325,7 +325,134 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
-// API Routes
+// === USER MANAGEMENT API (Admin Only) ===
+
+// Get all users (admin only)
+app.get('/api/users', authenticateToken, authorizeRole('admin'), async (req, res) => {
+  try {
+    const users = await db.all(`
+      SELECT id, username, email, role, is_active, last_login, created_at
+      FROM users
+      ORDER BY created_at ASC
+    `, []);
+
+    res.json(users);
+  } catch (error) {
+    logger.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Update user role (admin only)
+app.put('/api/users/:id/role', authenticateToken, authorizeRole('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    // Validate role
+    const validRoles = ['admin', 'editor', 'viewer'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be: admin, editor, or viewer' });
+    }
+
+    // Prevent changing own role
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'You cannot change your own role' });
+    }
+
+    // Check if user exists
+    const user = await db.get('SELECT * FROM users WHERE id = $1', [id]);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update role
+    const result = await db.run('UPDATE users SET role = $1 WHERE id = $2', [role, id]);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    logger.info(`User role updated: ID ${id}, new role: ${role}`);
+    res.json({ success: true, message: 'User role updated successfully' });
+  } catch (error) {
+    logger.error('Error updating user role:', error);
+    res.status(500).json({ error: 'Failed to update user role' });
+  }
+});
+
+// Toggle user active status (admin only)
+app.put('/api/users/:id/status', authenticateToken, authorizeRole('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    // Prevent deactivating own account
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'You cannot deactivate your own account' });
+    }
+
+    // Check if user exists
+    const user = await db.get('SELECT * FROM users WHERE id = $1', [id]);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update status
+    const result = await db.run('UPDATE users SET is_active = $1 WHERE id = $2', [is_active, id]);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    logger.info(`User status updated: ID ${id}, active: ${is_active}`);
+    res.json({ success: true, message: 'User status updated successfully' });
+  } catch (error) {
+    logger.error('Error updating user status:', error);
+    res.status(500).json({ error: 'Failed to update user status' });
+  }
+});
+
+// Delete user (admin only)
+app.delete('/api/users/:id', authenticateToken, authorizeRole('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Prevent deleting own account
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'You cannot delete your own account' });
+    }
+
+    // Check if user exists
+    const user = await db.get('SELECT * FROM users WHERE id = $1', [id]);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if it's the last admin
+    if (user.role === 'admin') {
+      const adminCount = await db.get('SELECT COUNT(*) as count FROM users WHERE role = $1', ['admin']);
+      if (parseInt(adminCount.count) <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the last admin user' });
+      }
+    }
+
+    // Delete user
+    const result = await db.run('DELETE FROM users WHERE id = $1', [id]);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    logger.info(`User deleted: ID ${id} (${user.username})`);
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    logger.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// === GROUP MANAGEMENT API ===
 
 // Get all groups with their usernames
 app.get('/api/groups', async (req, res) => {
