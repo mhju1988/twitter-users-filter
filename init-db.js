@@ -65,29 +65,7 @@ async function initializeDatabase() {
 
     console.log('Tables created successfully');
 
-    // Create indexes
-    console.log('Creating indexes...');
-
-    const indexes = [
-      'CREATE INDEX IF NOT EXISTS idx_usernames_group ON usernames(group_id)',
-      'CREATE INDEX IF NOT EXISTS idx_usernames_category ON usernames(category)',
-      'CREATE INDEX IF NOT EXISTS idx_usernames_username ON usernames(username)',
-      'CREATE INDEX IF NOT EXISTS idx_groups_name ON groups(name)',
-      'CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)',
-      'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
-      'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
-      'CREATE INDEX IF NOT EXISTS idx_videos_uploaded_by ON videos(uploaded_by)',
-      'CREATE INDEX IF NOT EXISTS idx_videos_filename ON videos(file_name)',
-      'CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)'
-    ];
-
-    for (const indexSql of indexes) {
-      await db.exec(indexSql);
-    }
-
-    console.log('Indexes created successfully');
-
-    // Migration: Fix usernames table schema (name->username, type->category, add display_name)
+    // Run migrations BEFORE creating indexes to ensure correct schema
     console.log('Running migrations...');
     try {
       if (db.isPostgres) {
@@ -226,6 +204,28 @@ async function initializeDatabase() {
     } catch (migrationError) {
       console.error('Videos table migration warning:', migrationError.message);
     }
+
+    // Create indexes after migrations to ensure correct schema
+    console.log('Creating indexes...');
+
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS idx_usernames_group ON usernames(group_id)',
+      'CREATE INDEX IF NOT EXISTS idx_usernames_category ON usernames(category)',
+      'CREATE INDEX IF NOT EXISTS idx_usernames_username ON usernames(username)',
+      'CREATE INDEX IF NOT EXISTS idx_groups_name ON groups(name)',
+      'CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)',
+      'CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)',
+      'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
+      'CREATE INDEX IF NOT EXISTS idx_videos_uploaded_by ON videos(uploaded_by)',
+      'CREATE INDEX IF NOT EXISTS idx_videos_filename ON videos(file_name)',
+      'CREATE INDEX IF NOT EXISTS idx_videos_created_at ON videos(created_at)'
+    ];
+
+    for (const indexSql of indexes) {
+      await db.exec(indexSql);
+    }
+
+    console.log('Indexes created successfully');
 
     // Check if default group exists
     const groupCount = await db.get('SELECT COUNT(*) as count FROM groups');
