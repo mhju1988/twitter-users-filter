@@ -207,8 +207,11 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Check if this is the first user (make them admin)
     const userCount = await db.get('SELECT COUNT(*) as count FROM users', []);
-    const isFirstUser = userCount.count === 0;
+    const count = userCount ? parseInt(userCount.count || 0) : 0;
+    const isFirstUser = count === 0;
     const userRole = isFirstUser ? 'admin' : (role || 'viewer');
+
+    logger.info(`User registration: count=${count}, isFirstUser=${isFirstUser}, role=${userRole}`);
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
