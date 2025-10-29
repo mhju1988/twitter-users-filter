@@ -1,0 +1,46 @@
+# Node modules (will be installed in container)
+node_modules/
+
+# Local SQLite database (using PostgreSQL in production)
+*.db
+*.db-shm
+*.db-wal
+speakers_listeners.db
+
+# Environment files
+.env
+.env.local
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs (will be created in container)
+*.log
+logs/
+combined.log
+error.log
+
+# Test files
+test/
+*.test.js
+*.spec.js
+
+# Local uploads (using Railway Volume in production)
+uploads/
+
+# Other
+.claude/
+tmp/
+temp/

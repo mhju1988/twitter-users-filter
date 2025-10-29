@@ -5,7 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start:prod": "node server-async.js",
+    "dev": "nodemon server.js",
+    "dev:async": "nodemon server-async.js",
+    "init-db": "node init-db.js"
   },
   "keywords": [
     "speakers",
@@ -25,6 +28,7 @@
     "express-session": "^1.18.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
+    "pg": "^8.11.3",
     "winston": "^3.11.0"
   },
   "devDependencies": {
