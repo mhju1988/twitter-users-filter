@@ -783,7 +783,7 @@ app.get('/api/statistics', async (req, res) => {
     const totalListenersResult = await db.get('SELECT COUNT(*) as count FROM usernames WHERE category = $1', ['listener']);
     const totalListeners = totalListenersResult.count;
 
-    const totalUsers = totalSpeakers + totalListeners;
+    const totalUsers = Number(totalSpeakers) + Number(totalListeners);
 
     // Average users per group
     const avgUsersPerGroup = totalGroups > 0 ? (totalUsers / totalGroups).toFixed(2) : 0;
